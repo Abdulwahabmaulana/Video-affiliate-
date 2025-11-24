@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback } from 'react';
 import { GoogleGenAI, Type, Modality } from '@google/genai';
 
@@ -221,10 +220,9 @@ export default function App() {
 
 
   const getAi = useCallback(() => {
-    // Validasi sederhana, namun perlu dicatat di Vercel process.env mungkin tidak tersedia di browser
-    // tanpa konfigurasi tambahan di vite.config.ts (define) atau menggunakan import.meta.env
+    // Di Vercel/Vite, process.env.API_KEY mungkin tidak tersedia jika tidak disetel di Environment Variables
     if (!process.env.API_KEY) {
-        throw new Error("Kunci API tidak ditemukan. Pastikan variabel lingkungan API_KEY sudah diatur.");
+        throw new Error("Kunci API tidak ditemukan. Jika Anda di Vercel, pastikan Environment Variable 'VITE_API_KEY' atau 'API_KEY' sudah disetel di pengaturan Project.");
     }
     return new GoogleGenAI({ apiKey: process.env.API_KEY });
   }, []);
@@ -234,7 +232,9 @@ export default function App() {
     let errorMessage = "Terjadi kesalahan tak terduga.";
     if (typeof err.message === 'string') {
         if (err.message.includes("API key not valid") || err.message.includes("Requested entity was not found")) {
-            errorMessage = "Kunci API Anda tidak valid atau tidak memiliki akses. Pastikan Anda menggunakan API Key dari proyek berbayar untuk fitur Video (Veo).";
+            errorMessage = "Kunci API tidak valid atau tidak memiliki akses. Pastikan API Key Anda aktif dan memiliki Billing Project untuk fitur Veo.";
+        } else if (err.message.includes("Kunci API tidak ditemukan")) {
+            errorMessage = err.message;
         } else {
            errorMessage = err.message;
         }
@@ -483,9 +483,8 @@ export default function App() {
 
       try {
         // --- 1. API Key Selection for Veo ---
-        // Penggunaan model Veo memerlukan kunci API dari proyek yang memiliki penagihan aktif.
-        // Kita harus memastikan pengguna telah memilih kunci yang valid melalui dialog AI Studio.
         const aiStudio = (window as any).aistudio;
+        // Hanya jalankan selector jika di environment AI Studio, di Vercel kita andalkan ENV var
         if (aiStudio) {
             const hasKey = await aiStudio.hasSelectedApiKey();
             if (!hasKey) {
@@ -497,7 +496,6 @@ export default function App() {
         }
 
         // --- 2. Create AI Instance with Updated Key ---
-        // Penting: Buat instance baru untuk menangkap API_KEY yang baru dipilih jika ada.
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
         // --- 3. Start Video Generation ---
@@ -516,16 +514,14 @@ export default function App() {
         });
 
         // --- 4. Polling Loop ---
-        // Video generation tidak instan, kita harus menunggu operasi selesai.
         while (!operation.done) {
-            await new Promise(resolve => setTimeout(resolve, 5000)); // Tunggu 5 detik sebelum cek lagi
+            await new Promise(resolve => setTimeout(resolve, 5000));
             operation = await ai.operations.getVideosOperation({ operation: operation });
         }
 
         // --- 5. Fetch and Store Video ---
         const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
         if (downloadLink) {
-            // Kita harus menyertakan API KEY saat fetch dari link hasil generate
             const videoResponse = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
             if (!videoResponse.ok) throw new Error("Gagal mengunduh video yang dihasilkan.");
             
@@ -577,7 +573,10 @@ export default function App() {
                     placeholder="Contoh: Sepatu lari ringan dengan bantalan busa responsif, cocok untuk lari jarak jauh..."
                 />
             </div>
-            {error && <p className="mt-4 text-sm text-red-400 text-center">{error}</p>}
+            {error && <div className="mt-4 p-4 bg-red-900/50 border border-red-500 rounded-md text-sm text-red-200 text-center">
+                <p className="font-bold">Error:</p>
+                <p>{error}</p>
+            </div>}
             <button
               onClick={handleGenerateScenarios}
               disabled={!productImage || !modelImage || isLoading}
