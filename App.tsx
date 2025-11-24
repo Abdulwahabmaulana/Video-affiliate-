@@ -221,6 +221,8 @@ export default function App() {
 
 
   const getAi = useCallback(() => {
+    // Validasi sederhana, namun perlu dicatat di Vercel process.env mungkin tidak tersedia di browser
+    // tanpa konfigurasi tambahan di vite.config.ts (define) atau menggunakan import.meta.env
     if (!process.env.API_KEY) {
         throw new Error("Kunci API tidak ditemukan. Pastikan variabel lingkungan API_KEY sudah diatur.");
     }
@@ -232,7 +234,7 @@ export default function App() {
     let errorMessage = "Terjadi kesalahan tak terduga.";
     if (typeof err.message === 'string') {
         if (err.message.includes("API key not valid") || err.message.includes("Requested entity was not found")) {
-            errorMessage = "Kunci API Anda tidak valid atau tidak memiliki akses. Pastikan Anda menggunakan API Key dari proyek berbayar.";
+            errorMessage = "Kunci API Anda tidak valid atau tidak memiliki akses. Pastikan Anda menggunakan API Key dari proyek berbayar untuk fitur Video (Veo).";
         } else {
            errorMessage = err.message;
         }
@@ -482,7 +484,7 @@ export default function App() {
       try {
         // --- 1. API Key Selection for Veo ---
         // Penggunaan model Veo memerlukan kunci API dari proyek yang memiliki penagihan aktif.
-        // Kita harus memastikan pengguna telah memilih kunci yang valid.
+        // Kita harus memastikan pengguna telah memilih kunci yang valid melalui dialog AI Studio.
         const aiStudio = (window as any).aistudio;
         if (aiStudio) {
             const hasKey = await aiStudio.hasSelectedApiKey();
@@ -501,28 +503,29 @@ export default function App() {
         // --- 3. Start Video Generation ---
         let operation = await ai.models.generateVideos({
             model: 'veo-3.1-fast-generate-preview',
-            prompt: promptItem.prompt, // Prompt teks
+            prompt: promptItem.prompt, // Menggunakan prompt teks yang dihasilkan sebelumnya
             image: {
-                imageBytes: promptItem.imageBase64, // Gambar referensi dari langkah sebelumnya
-                mimeType: 'image/png', // Kita asumsikan PNG dari generateContent
+                imageBytes: promptItem.imageBase64, // Gambar referensi sebagai frame awal
+                mimeType: 'image/png',
             },
             config: {
                 numberOfVideos: 1,
                 resolution: '720p',
-                aspectRatio: '16:9', // Standar untuk video
+                aspectRatio: '16:9', // Standar Youtube/Web
             }
         });
 
         // --- 4. Polling Loop ---
+        // Video generation tidak instan, kita harus menunggu operasi selesai.
         while (!operation.done) {
-            await new Promise(resolve => setTimeout(resolve, 5000)); // Tunggu 5 detik
+            await new Promise(resolve => setTimeout(resolve, 5000)); // Tunggu 5 detik sebelum cek lagi
             operation = await ai.operations.getVideosOperation({ operation: operation });
         }
 
         // --- 5. Fetch and Store Video ---
         const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
         if (downloadLink) {
-            // Kita harus menyertakan API KEY saat fetch dari link ini
+            // Kita harus menyertakan API KEY saat fetch dari link hasil generate
             const videoResponse = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
             if (!videoResponse.ok) throw new Error("Gagal mengunduh video yang dihasilkan.");
             
@@ -674,19 +677,19 @@ export default function App() {
                                 className={`flex items-center gap-2 text-sm text-white font-bold py-2 px-4 rounded transition-all ${
                                     generatingVideos[index] 
                                     ? 'bg-indigo-800 cursor-not-allowed' 
-                                    : 'bg-indigo-600 hover:bg-indigo-500'
+                                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-lg'
                                 }`}
                                 disabled={isRegenerating[index] || generatingVideos[index]}
                             >
                               {generatingVideos[index] ? (
                                 <>
                                   <LoadingSpinner />
-                                  <span>Membuat Video...</span>
+                                  <span>Memproses... (1-2 min)</span>
                                 </>
                               ) : (
                                 <>
                                   <PlayIcon className="w-5 h-5" />
-                                  <span>Buat Video (Veo)</span>
+                                  <span>Generate Video (Veo)</span>
                                 </>
                               )}
                             </button>
@@ -696,11 +699,18 @@ export default function App() {
                   
                   {/* Video Player Area */}
                   {videoUrls[index] && (
-                      <div className="mt-2 w-full bg-black rounded-lg overflow-hidden border border-indigo-900/50">
-                          <p className="text-xs text-gray-400 p-2 bg-gray-800/50 border-b border-gray-700">Hasil Video Veo:</p>
+                      <div className="mt-4 w-full bg-black rounded-lg overflow-hidden border border-indigo-500/50 shadow-xl animate-fade-in">
+                          <div className="flex items-center justify-between p-2 bg-gray-800/80 border-b border-gray-700">
+                             <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Hasil Google Veo</p>
+                             <a href={videoUrls[index]} download={`veo_video_${index+1}.mp4`} className="text-xs text-white hover:text-indigo-300 flex items-center gap-1">
+                                <DownloadIcon className="w-3 h-3"/> Unduh MP4
+                             </a>
+                          </div>
                           <video 
                               controls 
-                              className="w-full h-auto max-h-[400px]" 
+                              autoPlay
+                              loop
+                              className="w-full h-auto max-h-[400px] mx-auto" 
                               src={videoUrls[index]} 
                               poster={`data:image/png;base64,${item.imageBase64}`}
                           >
@@ -717,8 +727,8 @@ export default function App() {
             >
               {copySuccess === 'all' ? 'Semua Prompt Disalin!' : 'Salin Semua Prompt'}
             </button>
-             <p className="mt-4 text-xs text-gray-500 text-center">
-                Catatan: Pembuatan video menggunakan Veo membutuhkan waktu beberapa menit dan memerlukan API Key proyek berbayar.
+             <p className="mt-6 text-xs text-gray-500 text-center border-t border-gray-800 pt-4">
+                Catatan: Fitur video menggunakan model <strong>Veo</strong>. Proses ini membutuhkan waktu 1-2 menit per video dan memerlukan API Key dari proyek Google Cloud dengan penagihan aktif (Paid Project).
             </p>
           </>
         )
@@ -747,7 +757,7 @@ export default function App() {
         </main>
 
         <footer className="text-center mt-8 text-sm text-gray-500">
-            <p>Didukung oleh Google Gemini & Veo</p>
+            <p>Didukung oleh Google Gemini 2.5 & Google Veo</p>
         </footer>
       </div>
     </div>
