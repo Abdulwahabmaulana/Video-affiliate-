@@ -1,0 +1,5 @@
+{
+  "name": "Generator Video Afiliasi AI",
+  "description": "Aplikasi untuk menghasilkan prompt video pemasaran afiliasi untuk produk menggunakan AI. Unggah gambar produk dan model, dan biarkan AI membuat skenario video yang menarik dan menghasilkan prompt akhir untuk digunakan di aplikasi lain.",
+  "requestFramePermissions": []
+}
